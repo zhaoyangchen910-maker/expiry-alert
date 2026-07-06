@@ -1,0 +1,18 @@
+{
+  "name": "expiry-alert",
+  "version": "1.0.0",
+  "private": true,
+  "description": "过期警报：减少家庭食物浪费的趣味冰箱管家",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "keywords": [
+    "food-waste",
+    "expiry-alert",
+    "vercel",
+    "static-site"
+  ],
+  "author": "",
+  "license": "MIT"
+}

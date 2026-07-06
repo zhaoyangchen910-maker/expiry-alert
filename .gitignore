@@ -1,0 +1,10 @@
+node_modules/
+.vercel/
+.env
+.env.local
+dist/
+build/
+*.log
+*.tmp
+.trae-html-share-packages/
+过期警报创意方案.html

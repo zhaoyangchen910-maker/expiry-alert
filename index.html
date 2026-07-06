@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="过期警报是一款减少家庭食物浪费的趣味冰箱管家，支持食材录入、保质期倒计时和抢救菜谱生成。"
+    />
+    <title>过期警报｜减少家庭食物浪费的趣味管家</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="过期警报首页">
+          <span class="brand-icon">⏰</span>
+          <span>过期警报</span>
+        </a>
+        <nav class="nav" aria-label="页面导航">
+          <a href="#demo">开始使用</a>
+          <a href="#features">核心功能</a>
+          <a href="#recipe">抢救菜谱</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-content">
+            <p class="eyebrow">AI 冰箱管家 · 临期食材抢救站</p>
+            <h1>别让牛奶在冰箱里默默过期</h1>
+            <p class="hero-text">
+              手动录入食材和购买日期，系统自动计算保质期倒计时。快过期时，它会用夸张又好笑的方式提醒你，并生成一份能直接照做的抢救菜谱。
+            </p>
+            <div class="hero-actions">
+              <a class="primary-link" href="#demo">马上体验</a>
+              <button class="ghost-button" type="button" id="hero-sample-btn">放入示例食材</button>
+            </div>
+          </div>
+
+          <aside class="hero-card" aria-label="今日冰箱状态">
+            <div class="phone-card">
+              <div class="phone-top">
+                <span>我的冰箱</span>
+                <span id="hero-total">0 件</span>
+              </div>
+              <div class="urgent-card">
+                <span class="urgent-label">今日警报</span>
+                <strong id="hero-alert-title">冰箱暂时安静</strong>
+                <p id="hero-alert-text">先录入一些食材，我再开始催你吃饭。</p>
+              </div>
+              <div class="mini-list" id="hero-mini-list"></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="section" id="demo">
+          <div class="section-heading">
+            <p class="eyebrow">可使用 Demo</p>
+            <h2>录入食材，查看倒计时</h2>
+            <p>
+              这个版本先完成最重要的三件事：手动输入食材、保质期倒计时、根据临期食材生成抢救菜谱。
+            </p>
+          </div>
+
+          <div class="workspace">
+            <form class="panel food-form" id="food-form">
+              <div class="panel-title">
+                <h3>添加食材</h3>
+                <p>录入后会保存到当前浏览器，刷新页面也不会丢。</p>
+              </div>
+
+              <div class="form-grid">
+                <label>
+                  食材名称
+                  <input id="food-name" type="text" placeholder="例如：牛奶" required />
+                </label>
+                <label>
+                  分类
+                  <select id="food-category">
+                    <option value="乳制品">乳制品</option>
+                    <option value="蔬菜">蔬菜</option>
+                    <option value="水果">水果</option>
+                    <option value="蛋类">蛋类</option>
+                    <option value="主食">主食</option>
+                    <option value="肉类">肉类</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </label>
+                <label>
+                  购买日期
+                  <input id="buy-date" type="date" required />
+                </label>
+                <label>
+                  保质期天数
+                  <input id="shelf-life" type="number" min="1" max="365" value="7" required />
+                </label>
+                <label class="full">
+                  备注
+                  <input id="food-note" type="text" placeholder="例如：开封后尽快喝完" />
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button class="primary-button" type="submit">加入冰箱</button>
+                <button class="secondary-button" type="button" id="sample-btn">示例食材</button>
+                <button class="secondary-button danger-text" type="button" id="clear-btn">清空</button>
+              </div>
+            </form>
+
+            <section class="panel fridge-panel" aria-label="保质期倒计时">
+              <div class="panel-title">
+                <h3>保质期倒计时</h3>
+                <p>按紧急程度排序，越需要抢救越靠前。</p>
+              </div>
+
+              <div class="stats-grid">
+                <div class="stat">
+                  <strong id="stat-total">0</strong>
+                  <span>全部食材</span>
+                </div>
+                <div class="stat">
+                  <strong id="stat-urgent">0</strong>
+                  <span>需要抢救</span>
+                </div>
+                <div class="stat">
+                  <strong id="stat-expired">0</strong>
+                  <span>已经过期</span>
+                </div>
+              </div>
+
+              <div class="food-list" id="food-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="section" id="recipe">
+          <div class="section-heading">
+            <p class="eyebrow">AI 抢救菜谱</p>
+            <h2>用快过期食材凑出一顿饭</h2>
+            <p>
+              系统会优先挑选剩余天数最少的食材。菜名可以离谱，但步骤必须正常，目标是让用户真的能吃掉它们。
+            </p>
+          </div>
+
+          <div class="recipe-layout">
+            <section class="panel">
+              <div class="panel-title">
+                <h3>生成菜谱</h3>
+                <p>点击按钮后，会根据当前冰箱里最紧急的食材生成一份方案。</p>
+              </div>
+              <button class="primary-button" type="button" id="generate-recipe-btn">生成抢救菜谱</button>
+              <div class="recipe-result" id="recipe-result" hidden></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <h3>AI 今日提醒</h3>
+                <p>它会盯着最需要处理的食材，负责把你从“等会儿再说”里拽出来。</p>
+              </div>
+              <div class="alert-box" id="ai-alert">
+                <strong>冰箱暂时安静</strong>
+                <p>先录入一些食材，我再开始催你吃饭。</p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="section" id="features">
+          <div class="section-heading">
+            <p class="eyebrow">核心功能</p>
+            <h2>比赛 Demo 先把主线跑通</h2>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card">
+              <span>01</span>
+              <h3>食材录入</h3>
+              <p>先支持手动输入，后续可以扩展拍照识别和扫码录入。</p>
+            </article>
+            <article class="feature-card">
+              <span>02</span>
+              <h3>保质期倒计时</h3>
+              <p>自动计算到期日、剩余天数和临期状态，让用户不用自己算。</p>
+            </article>
+            <article class="feature-card">
+              <span>03</span>
+              <h3>抢救菜谱生成</h3>
+              <p>优先使用快过期食材，给出一份能做、能吃、尽量不浪费的菜谱。</p>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
