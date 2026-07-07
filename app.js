@@ -13,6 +13,7 @@ const elements = {
   clearBtn: document.querySelector("#clear-btn"),
   generateRecipeBtn: document.querySelector("#generate-recipe-btn"),
   recipeResult: document.querySelector("#recipe-result"),
+  recipeSource: document.querySelector("#recipe-source"),
   aiAlert: document.querySelector("#ai-alert"),
   statTotal: document.querySelector("#stat-total"),
   statUrgent: document.querySelector("#stat-urgent"),
@@ -35,6 +36,7 @@ const categoryIcons = {
 
 const today = startOfDay(new Date());
 let foods = loadFoods();
+let isGeneratingRecipe = false;
 
 elements.buyDate.value = formatDate(today);
 
@@ -95,8 +97,174 @@ elements.foodList.addEventListener("click", (event) => {
 });
 
 elements.generateRecipeBtn.addEventListener("click", () => {
-  renderRecipe();
+  generateRecipe();
 });
+
+// ── 异步菜谱生成（DeepSeek API → 本地兜底） ──
+
+async function generateRecipe() {
+  if (isGeneratingRecipe) {
+    return;
+  }
+
+  const candidates = getSortedFoods()
+    .filter((food) => food.daysLeft >= -1)
+    .slice(0, 5);
+
+  if (candidates.length === 0) {
+    elements.recipeResult.hidden = false;
+    elements.recipeResult.innerHTML = `
+      <h3>今天没有可抢救食材</h3>
+      <p>先添加一些还没有过期的食材，AI 才能帮你凑出一顿饭。</p>
+    `;
+    elements.recipeSource.textContent = "";
+    return;
+  }
+
+  isGeneratingRecipe = true;
+  elements.generateRecipeBtn.disabled = true;
+  elements.generateRecipeBtn.textContent = "AI 正在翻冰箱...";
+  elements.recipeResult.hidden = false;
+  elements.recipeResult.innerHTML = `<div class="loading-dots"><span></span><span></span><span></span></div>`;
+  elements.recipeSource.textContent = "";
+
+  try {
+    // 尝试调用 API
+    const response = await fetch("/api/generate-recipe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ingredients: candidates.map((f) => ({
+          name: f.name,
+          category: f.category,
+          daysLeft: f.daysLeft
+        }))
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.recipe) {
+      renderRecipeResult(data.recipe, "deepseek");
+      return;
+    }
+
+    // API 不可用或出错 → 本地兜底
+    console.warn("API 回退到本地:", data.error);
+    fallbackToLocal(candidates);
+  } catch (error) {
+    console.warn("网络错误，使用本地菜谱:", error);
+    fallbackToLocal(candidates);
+  }
+}
+
+function fallbackToLocal(candidates) {
+  // 延迟一小段，让 loading 动画能被看到
+  setTimeout(() => {
+    const recipe = buildRecipe(candidates);
+    renderRecipeResult(recipe, "local");
+  }, 400);
+}
+
+function renderRecipeResult(recipe, source) {
+  const candidates = getSortedFoods()
+    .filter((food) => food.daysLeft >= -1)
+    .slice(0, 5);
+
+  const names = candidates.map((food) => food.name).join("、");
+  const mostUrgent = candidates[0];
+  const sourceLabel = source === "deepseek" ? "AI 生成" : "本地兜底";
+
+  elements.recipeResult.innerHTML = `
+    <div class="recipe-header">
+      <h3>${escapeHtml(recipe.name)}</h3>
+      <span class="recipe-source-badge ${source}">${escapeHtml(sourceLabel)}</span>
+    </div>
+    <p class="recipe-ingredients">优先抢救：${escapeHtml(names)}。${mostUrgent ? `其中 ${escapeHtml(mostUrgent.name)} ${escapeHtml(mostUrgent.dayText)}，建议先处理。` : ""}</p>
+    <ol>
+      ${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+    </ol>
+  `;
+  elements.recipeSource.textContent = source === "deepseek" ? "由 DeepSeek AI 生成" : "";
+
+  // 重置按钮
+  isGeneratingRecipe = false;
+  elements.generateRecipeBtn.disabled = false;
+  elements.generateRecipeBtn.textContent = "生成抢救菜谱";
+}
+
+// ── 本地兜底菜谱 ──
+
+function buildRecipe(candidates) {
+  const categories = candidates.map((food) => food.category);
+  const names = candidates.map((food) => food.name);
+  const hasStaple = categories.includes("主食");
+  const hasEgg = categories.includes("蛋类");
+  const hasMilk = categories.includes("乳制品");
+  const hasVeg = categories.includes("蔬菜");
+  const hasFruit = categories.includes("水果");
+  const hasMeat = categories.includes("肉类");
+
+  if (hasStaple && hasEgg) {
+    return {
+      name: "冰箱边缘求生煎蛋主食盘",
+      steps: [
+        `把${names.join("、")}中适合加热的食材先切好或打散。`,
+        "主食用平底锅小火煎热，蛋类煎熟或炒熟。",
+        "蔬菜类简单凉拌或下锅快炒，最后拼成一盘。",
+        "吃完后把这些食材标记为已处理，完成一次临期抢救。"
+      ]
+    };
+  }
+
+  if (hasMilk && (hasFruit || hasStaple)) {
+    return {
+      name: "牛奶最后的倔强甜口救援",
+      steps: [
+        "把水果切块，或把吐司、面包等主食切成小块。",
+        "加入牛奶，做成奶昔、牛奶燕麦或简易甜品底。",
+        "如果有鸡蛋，可以做成布丁或法式吐司。",
+        "优先消耗快到期的牛奶，别让它在冰箱里继续流浪。"
+      ]
+    };
+  }
+
+  if (hasVeg && hasEgg) {
+    return {
+      name: "蔬菜和鸡蛋的临期和解炒",
+      steps: [
+        "蔬菜洗净切块，鸡蛋打散备用。",
+        "先炒鸡蛋，再放入蔬菜快炒。",
+        "用盐、生抽或黑胡椒简单调味，不需要复杂操作。",
+        "适合 15 分钟内解决一顿饭，也顺手救下临期食材。"
+      ]
+    };
+  }
+
+  if (hasMeat && hasVeg) {
+    return {
+      name: "冰箱抢救小队家常快炒",
+      steps: [
+        "肉类切片或切丁，蔬菜切成容易熟的小块。",
+        "先把肉类炒熟，再加入蔬菜翻炒。",
+        "用家里现有调料调味，避免为了抢救食材又买一堆新东西。",
+        "出锅前确认肉类完全熟透，安全第一。"
+      ]
+    };
+  }
+
+  return {
+    name: `${names[0]}带队的临期大杂烩`,
+    steps: [
+      "把快过期的食材按生熟分开处理，不能生吃的先加热。",
+      "能凉拌的做凉拌，适合加热的做快炒或煎烤。",
+      "用最少的额外调料完成一餐，重点是先把临期食材吃掉。",
+      "如果发现食材已经变质，就不要硬吃，直接丢弃并记录原因。"
+    ]
+  };
+}
+
+// ── 数据管理 ──
 
 function resetToSampleFoods() {
   foods = createSampleFoods();
@@ -168,6 +336,7 @@ function renderAiAlert(sortedFoods) {
   elements.aiAlert.innerHTML = `
     <strong>${escapeHtml(food.name)}提醒你</strong>
     <p>${escapeHtml(line)}</p>
+    <span class="reminder-mode">毒舌模式 · ${escapeHtml(food.dayText)}</span>
   `;
 }
 
@@ -200,102 +369,7 @@ function renderHero(sortedFoods) {
     .join("");
 }
 
-function renderRecipe() {
-  const candidates = getSortedFoods()
-    .filter((food) => food.daysLeft >= 0)
-    .slice(0, 4);
-
-  elements.recipeResult.hidden = false;
-
-  if (candidates.length === 0) {
-    elements.recipeResult.innerHTML = `
-      <h3>今天没有可抢救食材</h3>
-      <p>先添加一些还没有过期的食材，AI 才能帮你凑出一顿饭。</p>
-    `;
-    return;
-  }
-
-  const recipe = buildRecipe(candidates);
-  const names = candidates.map((food) => food.name).join("、");
-  const mostUrgent = candidates[0];
-
-  elements.recipeResult.innerHTML = `
-    <h3>${escapeHtml(recipe.name)}</h3>
-    <p>优先抢救：${escapeHtml(names)}。其中 ${escapeHtml(mostUrgent.name)} ${escapeHtml(mostUrgent.dayText)}，建议先处理。</p>
-    <ol>
-      ${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
-    </ol>
-  `;
-}
-
-function buildRecipe(candidates) {
-  const categories = candidates.map((food) => food.category);
-  const names = candidates.map((food) => food.name);
-  const hasStaple = categories.includes("主食");
-  const hasEgg = categories.includes("蛋类");
-  const hasMilk = categories.includes("乳制品");
-  const hasVeg = categories.includes("蔬菜");
-  const hasFruit = categories.includes("水果");
-  const hasMeat = categories.includes("肉类");
-
-  if (hasStaple && hasEgg) {
-    return {
-      name: "冰箱边缘求生煎蛋主食盘",
-      steps: [
-        `把${names.join("、")}中适合加热的食材先切好或打散。`,
-        "主食用平底锅小火煎热，蛋类煎熟或炒熟。",
-        "蔬菜类简单凉拌或下锅快炒，最后拼成一盘。",
-        "吃完后把这些食材标记为已处理，完成一次临期抢救。"
-      ]
-    };
-  }
-
-  if (hasMilk && (hasFruit || hasStaple)) {
-    return {
-      name: "牛奶最后的倔强甜口救援",
-      steps: [
-        "把水果切块，或把吐司、面包等主食切成小块。",
-        "加入牛奶，做成奶昔、牛奶燕麦或简易甜品底。",
-        "如果有鸡蛋，可以做成布丁或法式吐司。",
-        "优先消耗快到期的牛奶，别让它在冰箱里继续流浪。"
-      ]
-    };
-  }
-
-  if (hasVeg && hasEgg) {
-    return {
-      name: "蔬菜和鸡蛋的临期和解炒",
-      steps: [
-        "蔬菜洗净切块，鸡蛋打散备用。",
-        "先炒鸡蛋，再放入蔬菜快炒。",
-        "用盐、生抽或黑胡椒简单调味，不需要复杂操作。",
-        "适合 15 分钟内解决一顿饭，也顺手救下临期食材。"
-      ]
-    };
-  }
-
-  if (hasMeat && hasVeg) {
-    return {
-      name: "冰箱抢救小队家常快炒",
-      steps: [
-        "肉类切片或切丁，蔬菜切成容易熟的小块。",
-        "先把肉类炒熟，再加入蔬菜翻炒。",
-        "用家里现有调料调味，避免为了抢救食材又买一堆新东西。",
-        "出锅前确认肉类完全熟透，安全第一，整活第二。"
-      ]
-    };
-  }
-
-  return {
-    name: `${names[0]}带队的临期大杂烩`,
-    steps: [
-      "把快过期的食材按生熟分开处理，不能生吃的先加热。",
-      "能凉拌的做凉拌，适合加热的做快炒或煎烤。",
-      "用最少的额外调料完成一餐，重点是先把临期食材吃掉。",
-      "如果发现食材已经变质，就不要硬吃，直接丢弃并记录原因。"
-    ]
-  };
-}
+// ── 工具函数 ──
 
 function getSortedFoods() {
   return foods

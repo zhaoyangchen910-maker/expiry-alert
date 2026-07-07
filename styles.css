@@ -509,6 +509,80 @@ select:focus {
   padding-left: 22px;
 }
 
+/* loading 动画 */
+.loading-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+}
+
+.loading-dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff9a58;
+  animation: loadingBounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes loadingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-14px); opacity: 1; }
+}
+
+/* 菜谱头部：标题 + 来源标签 */
+.recipe-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recipe-header h3 {
+  flex: 1;
+}
+
+.recipe-source-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+.recipe-source-badge.deepseek {
+  color: #0b6e4f;
+  background: #d1fae5;
+}
+
+.recipe-source-badge.local {
+  color: #7c6a5d;
+  background: #f0ebe6;
+}
+
+.recipe-ingredients {
+  font-size: 14px;
+  color: rgba(255, 248, 237, 0.75);
+  margin: 12px 0;
+}
+
+.recipe-source {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
 .alert-box {
   padding: 20px;
   border-radius: 24px;
