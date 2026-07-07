@@ -1,5 +1,3 @@
-const STORAGE_KEY = "expiry-alert-foods-v2";
-
 const elements = {
   form: document.querySelector("#food-form"),
   name: document.querySelector("#food-name"),
@@ -35,17 +33,36 @@ const categoryIcons = {
 };
 
 const today = startOfDay(new Date());
-let foods = loadFoods();
+let foods = [];
 let isGeneratingRecipe = false;
 
-elements.buyDate.value = formatDate(today);
+// ── 登录按钮 ──
+document.getElementById("login-btn").addEventListener("click", showAuthModal);
 
-if (foods.length === 0) {
-  foods = createSampleFoods();
-  saveFoods();
-}
+// ── 认证状态变化 → 迁移数据 + 重新加载 ──
+AuthAPI.onAuthChange(async (user) => {
+  if (user) {
+    // 登录/注册/游客 → 将本地数据迁移到 Supabase
+    await DataService.migrateLocalToSupabase();
+  }
+  // 重新加载数据
+  foods = await DataService.load();
+  renderApp();
+});
 
-renderApp();
+// ── 异步初始化 ──
+(async function initApp() {
+  elements.buyDate.value = formatDate(today);
+
+  foods = await DataService.load();
+
+  if (foods.length === 0) {
+    foods = createSampleFoods();
+    await DataService.save(foods);
+  }
+
+  renderApp();
+})();
 
 elements.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -69,30 +86,30 @@ elements.form.addEventListener("submit", (event) => {
   elements.form.reset();
   elements.buyDate.value = formatDate(today);
   elements.shelfLife.value = "7";
-  saveFoods();
+  DataService.save(foods);
   renderApp();
 });
 
 elements.sampleBtn.addEventListener("click", resetToSampleFoods);
-elements.heroSampleBtn.addEventListener("click", () => {
-  resetToSampleFoods();
+elements.heroSampleBtn.addEventListener("click", async () => {
+  await resetToSampleFoods();
   document.querySelector("#demo").scrollIntoView({ behavior: "smooth" });
 });
 
-elements.clearBtn.addEventListener("click", () => {
+elements.clearBtn.addEventListener("click", async () => {
   foods = [];
-  saveFoods();
+  await DataService.save(foods);
   renderApp();
 });
 
-elements.foodList.addEventListener("click", (event) => {
+elements.foodList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-id]");
   if (!button) {
     return;
   }
 
   foods = foods.filter((food) => food.id !== button.dataset.deleteId);
-  saveFoods();
+  await DataService.save(foods);
   renderApp();
 });
 
@@ -266,9 +283,9 @@ function buildRecipe(candidates) {
 
 // ── 数据管理 ──
 
-function resetToSampleFoods() {
+async function resetToSampleFoods() {
   foods = createSampleFoods();
-  saveFoods();
+  await DataService.save(foods);
   renderApp();
 }
 
@@ -477,19 +494,6 @@ function createSampleFoods() {
       note: "剩几片了"
     }
   ];
-}
-
-function loadFoods() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFoods() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(foods));
 }
 
 function parseDate(value) {

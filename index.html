@@ -9,6 +9,7 @@
     />
     <title>过期警报｜减少家庭食物浪费的趣味管家</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -21,6 +22,7 @@
           <a href="#demo">开始使用</a>
           <a href="#features">核心功能</a>
           <a href="#recipe">抢救菜谱</a>
+          <button class="login-btn" type="button" id="login-btn">登录</button>
         </nav>
       </header>
 
@@ -67,7 +69,7 @@
             <form class="panel food-form" id="food-form">
               <div class="panel-title">
                 <h3>添加食材</h3>
-                <p>录入后会保存到当前浏览器，刷新页面也不会丢。</p>
+                <p>登录后可同步到云端，未登录时保存在本地。</p>
               </div>
 
               <div class="form-grid">
@@ -189,6 +191,9 @@
       </main>
     </div>
 
+    <script src="./supabase-config.js"></script>
+    <script src="./auth.js"></script>
+    <script src="./data-service.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
