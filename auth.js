@@ -103,8 +103,9 @@ async function handleSession(session) {
   }
 
   const user = extractUser(session);
-  currentUser = user;
-  notifyListeners(user);
+  // 尝试从 profiles 表加载扩展信息（昵称等）
+  currentUser = await enrichUserFromProfile(user);
+  notifyListeners(currentUser);
 }
 
 function extractUser(session) {
@@ -116,6 +117,30 @@ function extractUser(session) {
     isAnonymous: authUser.is_anonymous || false,
     createdAt: authUser.created_at
   };
+}
+
+// 从 profiles 表拉取扩展信息，补充到 user 对象
+async function enrichUserFromProfile(user) {
+  try {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return user;
+    }
+
+    return {
+      ...user,
+      // profiles 表中的 display_name 优先级更高
+      displayName: data.display_name || user.displayName,
+      avatarUrl: data.avatar_url || null
+    };
+  } catch {
+    return user;
+  }
 }
 
 function notifyListeners(user) {
