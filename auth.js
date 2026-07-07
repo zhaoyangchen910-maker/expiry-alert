@@ -1,6 +1,6 @@
 // 过期警报 · 认证模块
-// 使用自定义 users 表 + Supabase RPC 函数
-// 密码哈希在 PostgreSQL 中通过 pgcrypto 完成，前端不接触密码
+// 所有认证操作通过 /api/auth 接口完成，前端不直接连接 Supabase
+// 会话信息以 base64 编码的 JSON 存在 localStorage 中，作为 Bearer Token 传递
 
 const SESSION_KEY = "expiry-alert-session";
 let currentUser = null;
@@ -35,67 +35,71 @@ const AuthAPI = {
     };
   },
 
-  login,       // 邮箱登录 → 调用 RPC login_user
-  register,    // 邮箱注册 → 调用 RPC register_user
-  guestLogin,  // 游客登录 → 调用 RPC create_guest_user
-  logout       // 退出 → 清除 localStorage
+  login,
+  register,
+  guestLogin,
+  logout
+};
+
+// ── 会话 Token 工具 ──
+
+function encodeSession(user) {
+  const payload = JSON.stringify({ userId: user.id, username: user.username, isGuest: user.isGuest });
+  return btoa(unescape(encodeURIComponent(payload)));
+}
+
+// 获取 Authorization header（给 /api/foods 等接口用）
+AuthAPI.getAuthHeader = function () {
+  const session = loadSession();
+  if (!session) return null;
+  return "Bearer " + encodeSession(session);
 };
 
 // ── 核心操作 ──
 
 async function login(email, password) {
-  const { data, error } = await supabaseClient.rpc("login_user", {
-    p_email: email,
-    p_password: password
+  const res = await fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "login", email, password })
   });
 
-  if (error) {
-    throw new Error(error.message || "登录失败");
-  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
 
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  const user = parseUserFromRpc(data.user);
+  const user = parseUser(data.user);
   saveSession(user);
   notifyListeners(user);
   return user;
 }
 
 async function register(username, email, password) {
-  const { data, error } = await supabaseClient.rpc("register_user", {
-    p_username: username,
-    p_email: email,
-    p_password: password
+  const res = await fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "register", username, email, password })
   });
 
-  if (error) {
-    throw new Error(error.message || "注册失败");
-  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
 
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  const user = parseUserFromRpc(data.user);
+  const user = parseUser(data.user);
   saveSession(user);
   notifyListeners(user);
   return user;
 }
 
 async function guestLogin() {
-  const { data, error } = await supabaseClient.rpc("create_guest_user");
+  const res = await fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "guest" })
+  });
 
-  if (error) {
-    throw new Error(error.message || "游客登录失败");
-  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
 
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  const user = parseUserFromRpc(data.user);
+  const user = parseUser(data.user);
   saveSession(user);
   notifyListeners(user);
   return user;
@@ -109,7 +113,7 @@ async function logout() {
 
 // ── 会话管理（localStorage） ──
 
-function parseUserFromRpc(rpcUser) {
+function parseUser(rpcUser) {
   return {
     id: rpcUser.id,
     username: rpcUser.username,
@@ -124,7 +128,7 @@ function saveSession(user) {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   } catch {
-    // localStorage 不可用，忽略
+    // 忽略
   }
 }
 
@@ -145,7 +149,7 @@ function clearSession() {
   }
 }
 
-// ── 初始化：恢复已有会话 ──
+// ── 初始化 ──
 
 function initAuth() {
   const saved = loadSession();
@@ -165,13 +169,11 @@ function notifyListeners(user) {
   });
 }
 
-// 自动初始化
 initAuth();
 
 // ── Auth UI：登录弹窗 ──
 
 function showAuthModal() {
-  // 防止重复
   if (document.getElementById("auth-overlay")) {
     return;
   }
@@ -237,38 +239,24 @@ function showAuthModal() {
   `;
 
   document.body.appendChild(overlay);
-
-  // 绑定事件
   bindAuthModalEvents(overlay);
 }
 
 function bindAuthModalEvents(overlay) {
-  // 关闭
   overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      closeAuthModal();
-    }
+    if (event.target === overlay) closeAuthModal();
   });
-
   document.getElementById("auth-close-btn").addEventListener("click", closeAuthModal);
-
-  // Tab 切换
   document.getElementById("auth-tab-login").addEventListener("click", () => switchAuthTab("login"));
   document.getElementById("auth-tab-register").addEventListener("click", () => switchAuthTab("register"));
-
-  // 登录提交
   document.getElementById("auth-form-login").addEventListener("submit", async (event) => {
     event.preventDefault();
     await submitLogin();
   });
-
-  // 注册提交
   document.getElementById("auth-form-register").addEventListener("submit", async (event) => {
     event.preventDefault();
     await submitRegister();
   });
-
-  // 游客登录
   document.getElementById("auth-guest-btn").addEventListener("click", async () => {
     await submitGuest();
   });
@@ -276,19 +264,12 @@ function bindAuthModalEvents(overlay) {
 
 function closeAuthModal() {
   const overlay = document.getElementById("auth-overlay");
-  if (overlay) {
-    overlay.remove();
-  }
+  if (overlay) overlay.remove();
 }
 
 function switchAuthTab(tab) {
-  document.querySelectorAll(".auth-tab").forEach((tabEl) => {
-    tabEl.classList.toggle("active", tabEl.dataset.tab === tab);
-  });
-
-  document.querySelectorAll(".auth-form").forEach((form) => {
-    form.classList.toggle("active", form.id === `auth-form-${tab}`);
-  });
+  document.querySelectorAll(".auth-tab").forEach((el) => el.classList.toggle("active", el.dataset.tab === tab));
+  document.querySelectorAll(".auth-form").forEach((form) => form.classList.toggle("active", form.id === `auth-form-${tab}`));
 }
 
 function showAuthError(tab, message) {
@@ -303,7 +284,6 @@ async function submitLogin() {
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
   showAuthError("login", "");
-
   try {
     await login(email, password);
     closeAuthModal();
@@ -319,17 +299,8 @@ async function submitRegister() {
   const password = document.getElementById("register-password").value;
   const confirm = document.getElementById("register-confirm").value;
   showAuthError("register", "");
-
-  if (!username) {
-    showAuthError("register", "请输入用户名");
-    return;
-  }
-
-  if (password !== confirm) {
-    showAuthError("register", "两次密码输入不一致");
-    return;
-  }
-
+  if (!username) { showAuthError("register", "请输入用户名"); return; }
+  if (password !== confirm) { showAuthError("register", "两次密码输入不一致"); return; }
   try {
     await register(username, email, password);
     closeAuthModal();
@@ -353,9 +324,7 @@ async function submitGuest() {
 
 function showToast(message) {
   const existing = document.getElementById("toast");
-  if (existing) {
-    existing.remove();
-  }
+  if (existing) existing.remove();
 
   const toast = document.createElement("div");
   toast.id = "toast";
@@ -363,11 +332,7 @@ function showToast(message) {
   toast.textContent = message;
   document.body.appendChild(toast);
 
-  // 触发动画
-  requestAnimationFrame(() => {
-    toast.classList.add("show");
-  });
-
+  requestAnimationFrame(() => toast.classList.add("show"));
   setTimeout(() => {
     toast.classList.remove("show");
     setTimeout(() => toast.remove(), 300);
@@ -378,23 +343,15 @@ function showToast(message) {
 
 function updateUserMenu(user) {
   const existing = document.getElementById("user-menu");
-  if (existing) {
-    existing.remove();
-  }
+  if (existing) existing.remove();
 
   const loginBtn = document.getElementById("login-btn");
-  if (loginBtn) {
-    loginBtn.style.display = user ? "none" : "";
-  }
+  if (loginBtn) loginBtn.style.display = user ? "none" : "";
 
-  if (!user) {
-    return;
-  }
+  if (!user) return;
 
   const header = document.querySelector(".site-header .nav");
-  if (!header) {
-    return;
-  }
+  if (!header) return;
 
   const menu = document.createElement("div");
   menu.id = "user-menu";
@@ -405,28 +362,23 @@ function updateUserMenu(user) {
     </span>
     <button class="user-menu-logout" type="button" id="logout-btn">退出</button>
   `;
-
   header.appendChild(menu);
-
   document.getElementById("logout-btn").addEventListener("click", async () => {
     await logout();
     showToast("已退出");
   });
 }
 
-// 监听认证变化 → 更新用户菜单
 AuthAPI.onAuthChange(updateUserMenu);
 
 // ── 辅助 ──
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => {
-    return {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[char];
-  });
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char]);
 }

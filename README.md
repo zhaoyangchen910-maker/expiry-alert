@@ -15,11 +15,13 @@
 - 邮箱注册/登录 + 游客匿名登录（自定义用户表，密码 bcrypt 哈希）
 - 响应式页面，支持手机和电脑访问
 
-## 技术架构
+## 安全架构
 
-- **认证**：自定义 `users` 表 + PostgreSQL `pgcrypto` 扩展做密码哈希，前端通过 Supabase RPC 调用注册/登录函数，密码从不在前端暴露
-- **数据存储**：未登录时用 localStorage，登录后切换到 Supabase，登录时自动迁移本地数据
-- **数据库**：Supabase PostgreSQL，行级安全通过应用层 `user_id` 过滤
+- **前端不直接连接数据库**：所有数据库操作通过 Vercel Serverless Functions（`/api/*`）完成
+- **Supabase Key 不暴露给前端**：`SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY` 存在 Vercel 环境变量中，仅后端可访问
+- **密码哈希在 PostgreSQL 端完成**：通过 `pgcrypto` 扩展的 bcrypt 算法，前端只传递明文密码到后端 API，数据库返回不含密码字段
+- **会话管理**：登录成功后，后端返回用户信息，前端存入 localStorage，请求 API 时作为 Bearer Token 传递，后端验证 userId 是否存在
+- **数据隔离**：每个食材绑定 `user_id`，API 层强制过滤，用户只能操作自己的数据
 
 ## 项目结构
 
@@ -28,12 +30,14 @@
 ├── index.html              # 网站入口
 ├── styles.css              # 页面样式
 ├── app.js                  # 交互逻辑
-├── auth.js                 # 认证模块（调用 RPC 实现注册/登录/游客）
-├── data-service.js         # 数据抽象层（localStorage ↔ Supabase）
-├── supabase-config.js      # Supabase 配置（需要你填写）
+├── auth.js                 # 认证模块（调 /api/auth）
+├── data-service.js         # 数据抽象层（localStorage ↔ /api/foods）
 ├── supabase.sql            # 数据库建表脚本 + RPC 函数
 ├── api/
-│   └── generate-recipe.js  # Vercel Serverless Function（DeepSeek API）
+│   ├── _supabase.js        # 后端共享 Supabase 客户端
+│   ├── auth.js             # 认证 API（注册/登录/游客/验证）
+│   ├── foods.js            # 食材 CRUD API
+│   └── generate-recipe.js  # 菜谱生成 API（DeepSeek）
 ├── vercel.json             # Vercel 部署配置
 ├── package.json            # 项目信息和本地预览命令
 └── README.md
@@ -47,16 +51,26 @@
 2. 项目创建完成后，进入 Dashboard → **SQL Editor**
 3. 打开 `supabase.sql` 文件，复制全部内容粘贴到 SQL Editor 中执行
    - 这会创建 `users` 表、`foods` 表，以及 `register_user`、`login_user`、`create_guest_user` 三个 RPC 函数
-   - 密码在数据库端通过 `pgcrypto` 扩展的 bcrypt 算法哈希，安全性由 PostgreSQL 保证
-4. 进入 **Settings → API**，复制 **Project URL** 和 **anon public key**
+4. 进入 **Settings → API**，复制 **Project URL** 和 **service_role key**（注意不是 anon key）
 
-### 2. 配置 supabase-config.js
+### 2. 配置 Vercel 环境变量
 
-打开 `supabase-config.js`，将 `YOUR_PROJECT.supabase.co` 替换为你的 Project URL，将 anonKey 替换为你的 anon public key。
+在 Vercel 项目设置 → **Environment Variables** 中添加：
 
-### 3. 配置 DeepSeek API（可选）
+| 变量名 | 值 | 说明 |
+|---|---|---|
+| `SUPABASE_URL` | `https://xxx.supabase.co` | Supabase 项目地址 |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Supabase service_role key（具有管理员权限，不要泄露） |
+| `DEEPSEEK_API_KEY` | `sk-...` | DeepSeek API Key（可选，不配置则使用本地兜底菜谱） |
 
-在 Vercel 项目设置中，添加环境变量 `DEEPSEEK_API_KEY`。如果不配置，菜谱生成会使用本地兜底方案。
+### 3. 部署
+
+1. 把项目上传到 GitHub 仓库
+2. 打开 Vercel → **Add New Project** → 导入 GitHub 仓库
+3. Framework Preset 选择 `Other`
+4. Build Command 留空，Output Directory 留空或 `.`
+5. 先在 Vercel 设置中添加上述环境变量
+6. 点击 Deploy
 
 ## 本地预览
 
@@ -66,15 +80,4 @@
 npm start
 ```
 
-也可以直接双击打开 `index.html` 预览（仅限未登录的 localStorage 模式）。
-
-## 部署到 Vercel
-
-1. 把项目上传到 GitHub 仓库。
-2. 打开 Vercel，选择 `Add New Project`。
-3. 导入这个 GitHub 仓库。
-4. Framework Preset 选择 `Other`。
-5. Build Command 留空。
-6. Output Directory 留空或填写 `.`。
-7. 点击 Deploy。
-8. 部署后在 Vercel 项目设置中添加环境变量 `DEEPSEEK_API_KEY`（可选）。
+也可以直接双击打开 `index.html` 预览（仅限未登录的 localStorage 模式，API 功能需要部署到 Vercel 后使用）。
