@@ -10,15 +10,8 @@ const SUPABASE_CONFIG = {
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvdXItcHJvamVjdCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjE5OTAwMDAwMDB9.EXAMPLE"
 };
 
-// 初始化 Supabase 客户端
+// 初始化 Supabase 客户端（仅用于数据库查询和 RPC 调用，不使用 Supabase Auth）
 const supabaseClient = supabase.createClient(
   SUPABASE_CONFIG.url,
-  SUPABASE_CONFIG.anonKey,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  }
+  SUPABASE_CONFIG.anonKey
 );

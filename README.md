@@ -12,8 +12,14 @@
 - 一键放入示例食材，方便演示
 - 根据临期食材生成抢救菜谱（DeepSeek AI）
 - 根据最紧急食材生成搞笑提醒
-- 邮箱注册/登录 + 游客匿名登录
+- 邮箱注册/登录 + 游客匿名登录（自定义用户表，密码 bcrypt 哈希）
 - 响应式页面，支持手机和电脑访问
+
+## 技术架构
+
+- **认证**：自定义 `users` 表 + PostgreSQL `pgcrypto` 扩展做密码哈希，前端通过 Supabase RPC 调用注册/登录函数，密码从不在前端暴露
+- **数据存储**：未登录时用 localStorage，登录后切换到 Supabase，登录时自动迁移本地数据
+- **数据库**：Supabase PostgreSQL，行级安全通过应用层 `user_id` 过滤
 
 ## 项目结构
 
@@ -22,10 +28,10 @@
 ├── index.html              # 网站入口
 ├── styles.css              # 页面样式
 ├── app.js                  # 交互逻辑
-├── auth.js                 # 认证模块（登录/注册/游客）
+├── auth.js                 # 认证模块（调用 RPC 实现注册/登录/游客）
 ├── data-service.js         # 数据抽象层（localStorage ↔ Supabase）
 ├── supabase-config.js      # Supabase 配置（需要你填写）
-├── supabase.sql            # 数据库建表脚本
+├── supabase.sql            # 数据库建表脚本 + RPC 函数
 ├── api/
 │   └── generate-recipe.js  # Vercel Serverless Function（DeepSeek API）
 ├── vercel.json             # Vercel 部署配置
@@ -40,12 +46,13 @@
 1. 打开 [supabase.com](https://supabase.com) 注册账号并创建一个新项目
 2. 项目创建完成后，进入 Dashboard → **SQL Editor**
 3. 打开 `supabase.sql` 文件，复制全部内容粘贴到 SQL Editor 中执行
-4. 进入 **Authentication → Settings**，开启 "Allow anonymous sign-ins"（游客登录）
-5. 进入 **Settings → API**，复制 **Project URL** 和 **anon public key**
+   - 这会创建 `users` 表、`foods` 表，以及 `register_user`、`login_user`、`create_guest_user` 三个 RPC 函数
+   - 密码在数据库端通过 `pgcrypto` 扩展的 bcrypt 算法哈希，安全性由 PostgreSQL 保证
+4. 进入 **Settings → API**，复制 **Project URL** 和 **anon public key**
 
 ### 2. 配置 supabase-config.js
 
-打开 `supabase-config.js`，将第 8 行的 `YOUR_PROJECT.supabase.co` 替换为你的 Project URL，将第 10 行的 anonKey 替换为你的 anon public key。
+打开 `supabase-config.js`，将 `YOUR_PROJECT.supabase.co` 替换为你的 Project URL，将 anonKey 替换为你的 anon public key。
 
 ### 3. 配置 DeepSeek API（可选）
 

@@ -1,6 +1,8 @@
 // 过期警报 · 认证模块
-// 支持：邮箱注册、邮箱登录、游客匿名登录
+// 使用自定义 users 表 + Supabase RPC 函数
+// 密码哈希在 PostgreSQL 中通过 pgcrypto 完成，前端不接触密码
 
+const SESSION_KEY = "expiry-alert-session";
 let currentUser = null;
 let authCallbacks = [];
 
@@ -16,7 +18,7 @@ const AuthAPI = {
   },
 
   get isGuest() {
-    return currentUser !== null && currentUser.isAnonymous;
+    return currentUser !== null && currentUser.isGuest;
   },
 
   get userId() {
@@ -33,113 +35,123 @@ const AuthAPI = {
     };
   },
 
-  login, // 邮箱登录
-  register, // 邮箱注册
-  guestLogin, // 游客登录
-  logout // 退出
+  login,       // 邮箱登录 → 调用 RPC login_user
+  register,    // 邮箱注册 → 调用 RPC register_user
+  guestLogin,  // 游客登录 → 调用 RPC create_guest_user
+  logout       // 退出 → 清除 localStorage
 };
 
 // ── 核心操作 ──
 
 async function login(email, password) {
-  const { data, error } = await supabaseClient.auth.signInWithPassword({
-    email,
-    password
+  const { data, error } = await supabaseClient.rpc("login_user", {
+    p_email: email,
+    p_password: password
   });
 
   if (error) {
-    throw error;
+    throw new Error(error.message || "登录失败");
   }
 
-  await handleSession(data.session);
-  return data;
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  const user = parseUserFromRpc(data.user);
+  saveSession(user);
+  notifyListeners(user);
+  return user;
 }
 
-async function register(email, password) {
-  const { data, error } = await supabaseClient.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { display_name: email.split("@")[0] }
-    }
+async function register(username, email, password) {
+  const { data, error } = await supabaseClient.rpc("register_user", {
+    p_username: username,
+    p_email: email,
+    p_password: password
   });
 
   if (error) {
-    throw error;
+    throw new Error(error.message || "注册失败");
   }
 
-  // 注册成功后立即登录
-  await handleSession(data.session);
-  return data;
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  const user = parseUserFromRpc(data.user);
+  saveSession(user);
+  notifyListeners(user);
+  return user;
 }
 
 async function guestLogin() {
-  const { data, error } = await supabaseClient.auth.signInAnonymously();
+  const { data, error } = await supabaseClient.rpc("create_guest_user");
 
   if (error) {
-    throw error;
+    throw new Error(error.message || "游客登录失败");
   }
 
-  await handleSession(data.session);
-  return data;
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  const user = parseUserFromRpc(data.user);
+  saveSession(user);
+  notifyListeners(user);
+  return user;
 }
 
 async function logout() {
-  const { error } = await supabaseClient.auth.signOut();
-  if (error) {
-    throw error;
-  }
   currentUser = null;
+  clearSession();
   notifyListeners(null);
 }
 
-// ── 会话管理 ──
+// ── 会话管理（localStorage） ──
 
-async function handleSession(session) {
-  if (!session) {
-    currentUser = null;
-    notifyListeners(null);
-    return;
-  }
-
-  const user = extractUser(session);
-  // 尝试从 profiles 表加载扩展信息（昵称等）
-  currentUser = await enrichUserFromProfile(user);
-  notifyListeners(currentUser);
-}
-
-function extractUser(session) {
-  const authUser = session.user;
+function parseUserFromRpc(rpcUser) {
   return {
-    id: authUser.id,
-    email: authUser.email || null,
-    displayName: authUser.user_metadata?.display_name || authUser.email?.split("@")[0] || "匿名用户",
-    isAnonymous: authUser.is_anonymous || false,
-    createdAt: authUser.created_at
+    id: rpcUser.id,
+    username: rpcUser.username,
+    email: rpcUser.email || null,
+    displayName: rpcUser.username,
+    isGuest: rpcUser.is_guest || false,
+    createdAt: rpcUser.created_at
   };
 }
 
-// 从 profiles 表拉取扩展信息，补充到 user 对象
-async function enrichUserFromProfile(user) {
+function saveSession(user) {
   try {
-    const { data, error } = await supabaseClient
-      .from("profiles")
-      .select("display_name, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return user;
-    }
-
-    return {
-      ...user,
-      // profiles 表中的 display_name 优先级更高
-      displayName: data.display_name || user.displayName,
-      avatarUrl: data.avatar_url || null
-    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   } catch {
-    return user;
+    // localStorage 不可用，忽略
+  }
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // 忽略
+  }
+}
+
+// ── 初始化：恢复已有会话 ──
+
+function initAuth() {
+  const saved = loadSession();
+  if (saved && saved.id) {
+    currentUser = saved;
+    notifyListeners(currentUser);
   }
 }
 
@@ -151,30 +163,6 @@ function notifyListeners(user) {
       console.warn("auth callback error:", err);
     }
   });
-}
-
-// ── 初始化：恢复已有会话 ──
-
-async function initAuth() {
-  try {
-    const { data, error } = await supabaseClient.auth.getSession();
-
-    if (error) {
-      console.warn("getSession error:", error);
-      return;
-    }
-
-    if (data.session) {
-      await handleSession(data.session);
-
-      // 监听未来会话变更（跨标签页等）
-      supabaseClient.auth.onAuthStateChange((_event, session) => {
-        handleSession(session);
-      });
-    }
-  } catch (err) {
-    console.warn("initAuth error:", err);
-  }
 }
 
 // 自动初始化
@@ -220,6 +208,10 @@ function showAuthModal() {
       <!-- 注册表单 -->
       <form class="auth-form" id="auth-form-register" autocomplete="on">
         <div class="auth-field">
+          <label for="register-username">用户名</label>
+          <input id="register-username" type="text" placeholder="给自己起个名字" required autocomplete="username" />
+        </div>
+        <div class="auth-field">
           <label for="register-email">邮箱</label>
           <input id="register-email" type="email" placeholder="your@email.com" required autocomplete="email" />
         </div>
@@ -240,7 +232,7 @@ function showAuthModal() {
       <button class="auth-guest" id="auth-guest-btn" type="button">
         游客模式进入
       </button>
-      <p class="auth-guest-hint">无需注册，数据仅保存在本地。后续可以关联邮箱保留数据。</p>
+      <p class="auth-guest-hint">无需注册，数据保存在云端，随时可用。</p>
     </div>
   `;
 
@@ -317,16 +309,21 @@ async function submitLogin() {
     closeAuthModal();
     showToast("登录成功");
   } catch (err) {
-    const message = translateAuthError(err.message);
-    showAuthError("login", message);
+    showAuthError("login", err.message || "登录失败");
   }
 }
 
 async function submitRegister() {
+  const username = document.getElementById("register-username").value.trim();
   const email = document.getElementById("register-email").value.trim();
   const password = document.getElementById("register-password").value;
   const confirm = document.getElementById("register-confirm").value;
   showAuthError("register", "");
+
+  if (!username) {
+    showAuthError("register", "请输入用户名");
+    return;
+  }
 
   if (password !== confirm) {
     showAuthError("register", "两次密码输入不一致");
@@ -334,12 +331,11 @@ async function submitRegister() {
   }
 
   try {
-    await register(email, password);
+    await register(username, email, password);
     closeAuthModal();
     showToast("注册成功");
   } catch (err) {
-    const message = translateAuthError(err.message);
-    showAuthError("register", message);
+    showAuthError("register", err.message || "注册失败");
   }
 }
 
@@ -347,29 +343,10 @@ async function submitGuest() {
   try {
     await guestLogin();
     closeAuthModal();
-    showToast("已进入游客模式");
+    showToast("已进入游客模式，数据将保存在云端");
   } catch (err) {
-    showToast("游客模式暂时不可用，请检查 Supabase 是否开启匿名登录");
+    showToast("游客模式暂时不可用：" + (err.message || "请检查网络连接"));
   }
-}
-
-function translateAuthError(message) {
-  if (message.includes("invalid_credentials") || message.includes("Invalid login credentials")) {
-    return "邮箱或密码错误";
-  }
-  if (message.includes("User already registered")) {
-    return "该邮箱已注册，请直接登录";
-  }
-  if (message.includes("Password should be at least 6 characters")) {
-    return "密码至少 6 位";
-  }
-  if (message.includes("Email not confirmed")) {
-    return "邮箱尚未验证，请查收验证邮件";
-  }
-  if (message.includes("rate_limit")) {
-    return "操作太频繁，请稍后再试";
-  }
-  return message || "操作失败，请稍后再试";
 }
 
 // ── Toast 提示 ──
@@ -424,7 +401,7 @@ function updateUserMenu(user) {
   menu.className = "user-menu";
   menu.innerHTML = `
     <span class="user-menu-email" title="${escapeHtml(user.email || "匿名用户")}">
-      ${escapeHtml(user.isAnonymous ? "游客" : user.displayName)}
+      ${escapeHtml(user.isGuest ? "游客" : user.displayName)}
     </span>
     <button class="user-menu-logout" type="button" id="logout-btn">退出</button>
   `;
