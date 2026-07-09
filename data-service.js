@@ -9,12 +9,26 @@ const LS_KEY = "expiry-alert-foods-v2";
 const DataService = {
   /** 加载食材列表 */
   async load() {
-    return AuthAPI.isLoggedIn ? loadFromApi() : loadFromLocal();
+    if (!AuthAPI.isLoggedIn) return loadFromLocal();
+    try {
+      return await loadFromApi();
+    } catch (err) {
+      console.warn("API 加载异常，使用本地数据:", err.message);
+      return loadFromLocal();
+    }
   },
 
   /** 保存食材列表（替换整表） */
   async save(foods) {
-    return AuthAPI.isLoggedIn ? saveToApi(foods) : saveToLocal(foods);
+    if (!AuthAPI.isLoggedIn) return saveToLocal(foods);
+    try {
+      return await saveToApi(foods);
+    } catch (err) {
+      console.warn("API 保存异常:", err.message);
+      // 同时保存到本地作为备份
+      saveToLocal(foods);
+      throw err;
+    }
   },
 
   /** 将本地数据迁移到云端（登录时调用） */
@@ -28,7 +42,7 @@ const DataService = {
       await saveToApi(localFoods);
       clearFromLocal();
     } catch (err) {
-      console.warn("迁移数据失败:", err);
+      console.warn("迁移数据失败:", err.message);
     }
   }
 };
@@ -71,36 +85,27 @@ async function safeJson(res) {
   }
 }
 
-async function loadFromApi() {
-  try {
-    const res = await fetch("/api/foods", {
-      method: "GET",
-      headers: await getApiHeaders()
-    });
-    const data = await safeJson(res);
-    if (data.error) {
-      console.warn("API 加载失败:", data.error);
-      return loadFromLocal();
-    }
-    return data.foods || [];
-  } catch (err) {
-    console.warn("API 加载异常:", err.message || err);
-    return loadFromLocal();
+async function saveToApi(foods) {
+  const res = await fetch("/api/foods", {
+    method: "POST",
+    headers: await getApiHeaders(),
+    body: JSON.stringify({ foods })
+  });
+  const data = await safeJson(res);
+  if (data.error) {
+    throw new Error(data.error);
   }
+  return data;
 }
 
-async function saveToApi(foods) {
-  try {
-    const res = await fetch("/api/foods", {
-      method: "POST",
-      headers: await getApiHeaders(),
-      body: JSON.stringify({ foods })
-    });
-    const data = await safeJson(res);
-    if (data.error) {
-      console.warn("API 保存失败:", data.error);
-    }
-  } catch (err) {
-    console.warn("API 保存异常:", err.message || err);
+async function loadFromApi() {
+  const res = await fetch("/api/foods", {
+    method: "GET",
+    headers: await getApiHeaders()
+  });
+  const data = await safeJson(res);
+  if (data.error) {
+    throw new Error(data.error);
   }
+  return data.foods || [];
 }

@@ -64,7 +64,7 @@ AuthAPI.onAuthChange(async (user) => {
   renderApp();
 })();
 
-elements.form.addEventListener("submit", (event) => {
+elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const name = elements.name.value.trim();
@@ -86,7 +86,7 @@ elements.form.addEventListener("submit", (event) => {
   elements.form.reset();
   elements.buyDate.value = formatDate(today);
   elements.shelfLife.value = "7";
-  DataService.save(foods);
+  await DataService.save(foods);
   renderApp();
 });
 
