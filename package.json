@@ -7,6 +7,9 @@
     "dev": "npx serve .",
     "start": "npx serve ."
   },
+  "dependencies": {
+    "@supabase/supabase-js": "^2"
+  },
   "keywords": [
     "food-waste",
     "expiry-alert",
