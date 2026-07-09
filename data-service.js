@@ -4,11 +4,19 @@
 
 const LS_KEY = "expiry-alert-foods-v2";
 
+// Promise 锁：防止 save 和 load 并发导致数据覆盖
+let pendingSave = null;
+
 // ── 对外暴露的 DataService API ──
 
 const DataService = {
   /** 加载食材列表 */
   async load() {
+    // 如果有正在进行的保存，等它完成后再加载，避免读到旧数据
+    if (pendingSave) {
+      await pendingSave;
+    }
+
     if (!AuthAPI.isLoggedIn) return loadFromLocal();
     try {
       return await loadFromApi();
@@ -21,13 +29,18 @@ const DataService = {
   /** 保存食材列表（替换整表） */
   async save(foods) {
     if (!AuthAPI.isLoggedIn) return saveToLocal(foods);
+
+    // 设置锁，让并发的 load 等待
+    pendingSave = saveToApi(foods);
     try {
-      return await saveToApi(foods);
+      return await pendingSave;
     } catch (err) {
       console.warn("API 保存异常:", err.message);
       // 同时保存到本地作为备份
       saveToLocal(foods);
       throw err;
+    } finally {
+      pendingSave = null;
     }
   },
 

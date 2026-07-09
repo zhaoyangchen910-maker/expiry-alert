@@ -39,14 +39,26 @@ let isGeneratingRecipe = false;
 // ── 登录按钮 ──
 document.getElementById("login-btn").addEventListener("click", showAuthModal);
 
+// 防止 initApp 和 onAuthChange 重复加载数据
+let dataLoaded = false;
+
 // ── 认证状态变化 → 迁移数据 + 重新加载 ──
 AuthAPI.onAuthChange(async (user) => {
+  if (dataLoaded) return;
+  dataLoaded = true;
+
   if (user) {
-    // 登录/注册/游客 → 将本地数据迁移到 Supabase
+    // 登录/注册/游客 → 将本地数据迁移到云端
     await DataService.migrateLocalToSupabase();
   }
-  // 重新加载数据
+  // 加载数据
   foods = await DataService.load();
+
+  if (foods.length === 0 && !user) {
+    foods = createSampleFoods();
+    await DataService.save(foods);
+  }
+
   renderApp();
 });
 
@@ -54,9 +66,13 @@ AuthAPI.onAuthChange(async (user) => {
 (async function initApp() {
   elements.buyDate.value = formatDate(today);
 
+  // 如果 onAuthChange 已经处理了加载，就不再重复
+  if (dataLoaded) return;
+  dataLoaded = true;
+
   foods = await DataService.load();
 
-  if (foods.length === 0) {
+  if (foods.length === 0 && !AuthAPI.isLoggedIn) {
     foods = createSampleFoods();
     await DataService.save(foods);
   }
@@ -86,7 +102,14 @@ elements.form.addEventListener("submit", async (event) => {
   elements.form.reset();
   elements.buyDate.value = formatDate(today);
   elements.shelfLife.value = "7";
-  await DataService.save(foods);
+
+  try {
+    await DataService.save(foods);
+    console.log("[save] 食材保存成功，当前 foods 数量:", foods.length);
+  } catch (err) {
+    console.error("[save] 食材保存失败:", err.message);
+    // 保存失败也渲染，至少显示本地数据
+  }
   renderApp();
 });
 
