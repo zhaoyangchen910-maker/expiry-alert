@@ -39,15 +39,12 @@ let isGeneratingRecipe = false;
 // ── 登录按钮 ──
 document.getElementById("login-btn").addEventListener("click", showAuthModal);
 
-// ── 认证状态变化 → 迁移数据 + 重新加载 ──
+// ── 认证状态变化 → 重新加载数据 ──
 AuthAPI.onAuthChange(async (user) => {
-  if (user) {
-    // 登录/注册/游客 → 将本地数据迁移到云端
-    await DataService.migrateLocalToSupabase();
-  }
   // 加载数据（登录后从云端加载，退出后从本地加载）
   foods = await DataService.load();
 
+  // 只有未登录且本地为空时才显示示例
   if (foods.length === 0 && !user) {
     foods = createSampleFoods();
     await DataService.save(foods);
