@@ -39,19 +39,13 @@ let isGeneratingRecipe = false;
 // ── 登录按钮 ──
 document.getElementById("login-btn").addEventListener("click", showAuthModal);
 
-// 防止 initApp 和 onAuthChange 重复加载数据
-let dataLoaded = false;
-
 // ── 认证状态变化 → 迁移数据 + 重新加载 ──
 AuthAPI.onAuthChange(async (user) => {
-  if (dataLoaded) return;
-  dataLoaded = true;
-
   if (user) {
     // 登录/注册/游客 → 将本地数据迁移到云端
     await DataService.migrateLocalToSupabase();
   }
-  // 加载数据
+  // 加载数据（登录后从云端加载，退出后从本地加载）
   foods = await DataService.load();
 
   if (foods.length === 0 && !user) {
@@ -63,16 +57,17 @@ AuthAPI.onAuthChange(async (user) => {
 });
 
 // ── 异步初始化 ──
+// 只有未登录时才在这里加载数据（已登录时 onAuthChange 会处理）
 (async function initApp() {
   elements.buyDate.value = formatDate(today);
 
-  // 如果 onAuthChange 已经处理了加载，就不再重复
-  if (dataLoaded) return;
-  dataLoaded = true;
+  if (AuthAPI.isLoggedIn) {
+    return; // 已登录：等 onAuthChange 触发加载
+  }
 
   foods = await DataService.load();
 
-  if (foods.length === 0 && !AuthAPI.isLoggedIn) {
+  if (foods.length === 0) {
     foods = createSampleFoods();
     await DataService.save(foods);
   }
