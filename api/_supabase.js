@@ -4,11 +4,18 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let _client = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY 环境变量");
+export function getSupabase() {
+  if (_client) return _client;
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY 环境变量");
+  }
+
+  _client = createClient(supabaseUrl, supabaseServiceKey);
+  return _client;
 }
-
-export const supabase = createClient(supabaseUrl, supabaseServiceKey);

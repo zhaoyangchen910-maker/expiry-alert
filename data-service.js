@@ -62,20 +62,29 @@ async function getApiHeaders() {
   };
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || `服务器返回非 JSON 响应 (HTTP ${res.status})`);
+  }
+}
+
 async function loadFromApi() {
   try {
     const res = await fetch("/api/foods", {
       method: "GET",
       headers: await getApiHeaders()
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (data.error) {
       console.warn("API 加载失败:", data.error);
       return loadFromLocal();
     }
     return data.foods || [];
   } catch (err) {
-    console.warn("API 加载异常:", err);
+    console.warn("API 加载异常:", err.message || err);
     return loadFromLocal();
   }
 }
@@ -87,11 +96,11 @@ async function saveToApi(foods) {
       headers: await getApiHeaders(),
       body: JSON.stringify({ foods })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (data.error) {
       console.warn("API 保存失败:", data.error);
     }
   } catch (err) {
-    console.warn("API 保存异常:", err);
+    console.warn("API 保存异常:", err.message || err);
   }
 }

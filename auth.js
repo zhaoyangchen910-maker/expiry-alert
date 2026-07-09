@@ -57,6 +57,15 @@ AuthAPI.getAuthHeader = function () {
 
 // ── 核心操作 ──
 
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || `服务器返回非 JSON 响应 (HTTP ${res.status})`);
+  }
+}
+
 async function login(email, password) {
   const res = await fetch("/api/auth", {
     method: "POST",
@@ -64,7 +73,7 @@ async function login(email, password) {
     body: JSON.stringify({ action: "login", email, password })
   });
 
-  const data = await res.json();
+  const data = await safeJson(res);
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);
@@ -80,7 +89,7 @@ async function register(username, email, password) {
     body: JSON.stringify({ action: "register", username, email, password })
   });
 
-  const data = await res.json();
+  const data = await safeJson(res);
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);
@@ -96,7 +105,7 @@ async function guestLogin() {
     body: JSON.stringify({ action: "guest" })
   });
 
-  const data = await res.json();
+  const data = await safeJson(res);
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);

@@ -2,7 +2,7 @@
 // 食材 CRUD API：所有操作在服务端完成，通过 user_id 隔离数据
 // 前端通过 Authorization header 传递 session 信息
 
-import { supabase } from "./_supabase.js";
+import { getSupabase } from "./_supabase.js";
 
 function parseSessionId(request) {
   const authHeader = request.headers.authorization || "";
@@ -18,10 +18,11 @@ function parseSessionId(request) {
 }
 
 export default async function handler(request, response) {
-  // 所有请求都需要 session
+  const json = (status, body) => response.status(status).json(body);
+
   const session = parseSessionId(request);
   if (!session || !session.userId) {
-    return response.status(401).json({ error: "请先登录" });
+    return json(401, { error: "请先登录" });
   }
 
   const userId = session.userId;
@@ -29,14 +30,13 @@ export default async function handler(request, response) {
   try {
     switch (request.method) {
       case "GET": {
-        // 获取当前用户的所有食材
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
           .from("foods")
           .select("id, name, category, buy_date, shelf_life, note")
           .eq("user_id", userId)
           .order("created_at", { ascending: true });
 
-        if (error) return response.status(500).json({ error: error.message });
+        if (error) return json(500, { error: error.message });
 
         const foods = (data || []).map((row) => ({
           id: row.id,
@@ -47,21 +47,19 @@ export default async function handler(request, response) {
           note: row.note || ""
         }));
 
-        return response.status(200).json({ foods });
+        return json(200, { foods });
       }
 
       case "POST": {
-        // 保存食材列表（全量替换）
         const { foods } = request.body || [];
         if (!Array.isArray(foods)) {
-          return response.status(400).json({ error: "foods 必须是数组" });
+          return json(400, { error: "foods 必须是数组" });
         }
 
-        // 删除当前用户所有食材
-        await supabase.from("foods").delete().eq("user_id", userId);
+        await getSupabase().from("foods").delete().eq("user_id", userId);
 
         if (foods.length === 0) {
-          return response.status(200).json({ ok: true });
+          return json(200, { ok: true });
         }
 
         const rows = foods.map((food) => ({
@@ -74,23 +72,22 @@ export default async function handler(request, response) {
           note: food.note || ""
         }));
 
-        const { error } = await supabase.from("foods").insert(rows);
-        if (error) return response.status(500).json({ error: error.message });
+        const { error } = await getSupabase().from("foods").insert(rows);
+        if (error) return json(500, { error: error.message });
 
-        return response.status(200).json({ ok: true });
+        return json(200, { ok: true });
       }
 
       case "DELETE": {
-        // 删除当前用户所有食材
-        await supabase.from("foods").delete().eq("user_id", userId);
-        return response.status(200).json({ ok: true });
+        await getSupabase().from("foods").delete().eq("user_id", userId);
+        return json(200, { ok: true });
       }
 
       default:
-        return response.status(405).json({ error: "不支持的请求方法" });
+        return json(405, { error: "不支持的请求方法" });
     }
   } catch (err) {
     console.error("foods.js error:", err);
-    return response.status(500).json({ error: "服务器错误" });
+    return json(500, { error: err.message || "服务器内部错误" });
   }
 }
