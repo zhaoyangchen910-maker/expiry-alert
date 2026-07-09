@@ -77,6 +77,7 @@ async function login(email, password) {
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);
+  currentUser = user;
   saveSession(user);
   notifyListeners(user);
   return user;
@@ -93,6 +94,7 @@ async function register(username, email, password) {
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);
+  currentUser = user;
   saveSession(user);
   notifyListeners(user);
   return user;
@@ -109,6 +111,7 @@ async function guestLogin() {
   if (data.error) throw new Error(data.error);
 
   const user = parseUser(data.user);
+  currentUser = user;
   saveSession(user);
   notifyListeners(user);
   return user;
