@@ -117,6 +117,12 @@ async function guestLogin() {
 async function logout() {
   currentUser = null;
   clearSession();
+  // 退出时清除本地食材缓存，避免旧数据在重新登录时覆盖云端
+  try {
+    localStorage.removeItem("expiry-alert-foods-v2");
+  } catch {
+    // 忽略
+  }
   notifyListeners(null);
 }
 

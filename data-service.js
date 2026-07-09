@@ -1,6 +1,6 @@
 // 过期警报 · 数据服务抽象层
-// 未登录 → localStorage
-// 已登录 → 通过 /api/foods 接口操作 Supabase（后端完成鉴权）
+// 未登录 → 仅使用 localStorage（页面刷新后保留）
+// 已登录 → 仅使用数据库（API），成功操作后清除 localStorage，避免旧数据覆盖云端
 
 const LS_KEY = "expiry-alert-foods-v2";
 
@@ -12,39 +12,44 @@ let pendingSave = null;
 const DataService = {
   /** 加载食材列表 */
   async load() {
-    // 如果有正在进行的保存，等它完成后再加载，避免读到旧数据
-    if (pendingSave) {
-      await pendingSave;
+    if (!AuthAPI.isLoggedIn) {
+      return loadFromLocal();
     }
 
-    if (!AuthAPI.isLoggedIn) return loadFromLocal();
+    // 登录后从云端加载
     try {
-      return await loadFromApi();
+      const foods = await loadFromApi();
+      // 加载成功后清除本地缓存，避免旧数据在重新登录时覆盖云端
+      clearFromLocal();
+      return foods;
     } catch (err) {
-      console.warn("API 加载异常，使用本地数据:", err.message);
-      return loadFromLocal();
+      console.warn("API 加载异常:", err.message);
+      return [];
     }
   },
 
   /** 保存食材列表（替换整表） */
   async save(foods) {
-    if (!AuthAPI.isLoggedIn) return saveToLocal(foods);
+    if (!AuthAPI.isLoggedIn) {
+      return saveToLocal(foods);
+    }
 
     // 设置锁，让并发的 load 等待
     pendingSave = saveToApi(foods);
     try {
-      return await pendingSave;
+      const result = await pendingSave;
+      // 保存成功后清除本地缓存
+      clearFromLocal();
+      return result;
     } catch (err) {
       console.warn("API 保存异常:", err.message);
-      // 同时保存到本地作为备份
-      saveToLocal(foods);
       throw err;
     } finally {
       pendingSave = null;
     }
   },
 
-  /** 将本地数据迁移到云端（登录时调用） */
+  /** 将本地数据迁移到云端（登录时调用，只执行一次） */
   async migrateLocalToSupabase() {
     const localFoods = loadFromLocal();
     if (!localFoods || localFoods.length === 0) {
@@ -76,7 +81,11 @@ function saveToLocal(foods) {
 }
 
 function clearFromLocal() {
-  localStorage.removeItem(LS_KEY);
+  try {
+    localStorage.removeItem(LS_KEY);
+  } catch {
+    // 忽略
+  }
 }
 
 // ── 后端 API 操作（通过 /api/foods 接口） ──
