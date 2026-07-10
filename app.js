@@ -368,8 +368,17 @@ function renderAiAlert(sortedFoods) {
   elements.aiAlert.innerHTML = `
     <strong>${escapeHtml(food.name)}提醒你</strong>
     <p>${escapeHtml(line)}</p>
-    <span class="reminder-mode">毒舌模式 · ${escapeHtml(food.dayText)}</span>
+    <div class="ai-alert-footer">
+      <span class="reminder-mode">毒舌模式 · ${escapeHtml(food.dayText)}</span>
+      <button class="speak-button" type="button" id="speak-button">
+        🔊 语音播报
+      </button>
+    </div>
   `;
+
+  document.getElementById("speak-button")?.addEventListener("click", () => {
+    speakAlert(line);
+  });
 }
 
 function renderHero(sortedFoods) {
@@ -539,6 +548,60 @@ function hashCode(text) {
     hash |= 0;
   }
   return hash;
+}
+
+// ── AI 语音播报 ──
+
+let isSpeaking = false;
+
+function speakAlert(text) {
+  if (!("speechSynthesis" in window)) {
+    return;
+  }
+
+  // 如果正在播报，先停止
+  if (isSpeaking) {
+    window.speechSynthesis.cancel();
+    isSpeaking = false;
+    updateSpeakButton(false);
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "zh-CN";
+  utterance.rate = 1.1;
+  utterance.pitch = 1.0;
+
+  // 尝试选一个中文语音
+  const voices = window.speechSynthesis.getVoices();
+  const zhVoice = voices.find((v) => v.lang.startsWith("zh-CN")) || voices.find((v) => v.lang.startsWith("zh"));
+  if (zhVoice) {
+    utterance.voice = zhVoice;
+  }
+
+  utterance.onstart = () => {
+    isSpeaking = true;
+    updateSpeakButton(true);
+  };
+
+  utterance.onend = () => {
+    isSpeaking = false;
+    updateSpeakButton(false);
+  };
+
+  utterance.onerror = () => {
+    isSpeaking = false;
+    updateSpeakButton(false);
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+function updateSpeakButton(speaking) {
+  const btn = document.getElementById("speak-button");
+  if (!btn) return;
+  btn.textContent = speaking ? "🔊 停止播报" : "🔊 语音播报";
+  btn.classList.toggle("speaking", speaking);
 }
 
 function escapeHtml(value) {

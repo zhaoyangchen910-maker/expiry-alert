@@ -601,6 +601,52 @@ select:focus {
   color: rgba(255, 255, 255, 0.88);
 }
 
+/* AI 提醒底部：模式标签 + 语音按钮 */
+.ai-alert-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  gap: 10px;
+}
+
+.reminder-mode {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.speak-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s;
+}
+
+.speak-button:hover {
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.speak-button.speaking {
+  background: rgba(255, 107, 53, 0.5);
+  border-color: var(--accent);
+  animation: speakPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes speakPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(255, 107, 53, 0.25); }
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
