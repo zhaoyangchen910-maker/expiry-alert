@@ -568,13 +568,14 @@ function speakAlert(text) {
   }
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "zh-CN";
-  utterance.rate = 1.1;
+  utterance.lang = "zh-HK";
+  utterance.rate = 1.05;
   utterance.pitch = 1.0;
 
-  // 尝试选一个中文语音
+  // 优先选粤语（香港）语音，fallback 到任意中文语音
   const voices = window.speechSynthesis.getVoices();
-  const zhVoice = voices.find((v) => v.lang.startsWith("zh-CN")) || voices.find((v) => v.lang.startsWith("zh"));
+  const hkVoice = voices.find((v) => v.lang === "zh-HK" || v.lang === "zh-HK-HK" || v.name.includes("Cantonese") || v.name.includes("香港"));
+  const zhVoice = hkVoice || voices.find((v) => v.lang.startsWith("zh"));
   if (zhVoice) {
     utterance.voice = zhVoice;
   }
