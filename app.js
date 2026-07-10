@@ -550,11 +550,12 @@ function hashCode(text) {
   return hash;
 }
 
-// ── AI 语音播报 ──
+// ── AI 语音播报（粤语版） ──
 
 let isSpeaking = false;
+let isTranslating = false;
 
-function speakAlert(text) {
+async function speakAlert(text) {
   if (!("speechSynthesis" in window)) {
     return;
   }
@@ -567,7 +568,33 @@ function speakAlert(text) {
     return;
   }
 
-  const utterance = new SpeechSynthesisUtterance(text);
+  // 如果正在翻译，忽略重复点击
+  if (isTranslating) return;
+
+  let cantoneseText = text;
+
+  // 尝试调用后端 API 翻译成粤语
+  try {
+    isTranslating = true;
+    updateSpeakButton(false, true);
+
+    const res = await fetch("/api/translate-cantonese", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+
+    const data = await res.json();
+    if (data.cantonese) {
+      cantoneseText = data.cantonese;
+    }
+  } catch (err) {
+    console.warn("粤语翻译失败，使用原文:", err);
+  } finally {
+    isTranslating = false;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(cantoneseText);
   utterance.lang = "zh-HK";
   utterance.rate = 1.05;
   utterance.pitch = 1.0;
@@ -582,25 +609,32 @@ function speakAlert(text) {
 
   utterance.onstart = () => {
     isSpeaking = true;
-    updateSpeakButton(true);
+    updateSpeakButton(true, false);
   };
 
   utterance.onend = () => {
     isSpeaking = false;
-    updateSpeakButton(false);
+    updateSpeakButton(false, false);
   };
 
   utterance.onerror = () => {
     isSpeaking = false;
-    updateSpeakButton(false);
+    updateSpeakButton(false, false);
   };
 
   window.speechSynthesis.speak(utterance);
 }
 
-function updateSpeakButton(speaking) {
+function updateSpeakButton(speaking, translating) {
   const btn = document.getElementById("speak-button");
   if (!btn) return;
+
+  if (translating) {
+    btn.textContent = "🔄 翻译紧…";
+    btn.classList.remove("speaking");
+    return;
+  }
+
   btn.textContent = speaking ? "🔊 停止播报" : "🔊 语音播报";
   btn.classList.toggle("speaking", speaking);
 }
