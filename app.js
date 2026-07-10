@@ -368,17 +368,8 @@ function renderAiAlert(sortedFoods) {
   elements.aiAlert.innerHTML = `
     <strong>${escapeHtml(food.name)}提醒你</strong>
     <p>${escapeHtml(line)}</p>
-    <div class="ai-alert-footer">
-      <span class="reminder-mode">毒舌模式 · ${escapeHtml(food.dayText)}</span>
-      <button class="speak-button" type="button" id="speak-button">
-        🔊 语音播报
-      </button>
-    </div>
+    <span class="reminder-mode">毒舌模式 · ${escapeHtml(food.dayText)}</span>
   `;
-
-  document.getElementById("speak-button")?.addEventListener("click", () => {
-    speakAlert(line);
-  });
 }
 
 function renderHero(sortedFoods) {
@@ -548,95 +539,6 @@ function hashCode(text) {
     hash |= 0;
   }
   return hash;
-}
-
-// ── AI 语音播报（粤语版） ──
-
-let isSpeaking = false;
-let isTranslating = false;
-
-async function speakAlert(text) {
-  if (!("speechSynthesis" in window)) {
-    return;
-  }
-
-  // 如果正在播报，先停止
-  if (isSpeaking) {
-    window.speechSynthesis.cancel();
-    isSpeaking = false;
-    updateSpeakButton(false);
-    return;
-  }
-
-  // 如果正在翻译，忽略重复点击
-  if (isTranslating) return;
-
-  let cantoneseText = text;
-
-  // 尝试调用后端 API 翻译成粤语
-  try {
-    isTranslating = true;
-    updateSpeakButton(false, true);
-
-    const res = await fetch("/api/translate-cantonese", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-
-    const data = await res.json();
-    if (data.cantonese) {
-      cantoneseText = data.cantonese;
-    }
-  } catch (err) {
-    console.warn("粤语翻译失败，使用原文:", err);
-  } finally {
-    isTranslating = false;
-  }
-
-  const utterance = new SpeechSynthesisUtterance(cantoneseText);
-  utterance.lang = "zh-HK";
-  utterance.rate = 1.05;
-  utterance.pitch = 1.0;
-
-  // 优先选粤语（香港）语音，fallback 到任意中文语音
-  const voices = window.speechSynthesis.getVoices();
-  const hkVoice = voices.find((v) => v.lang === "zh-HK" || v.lang === "zh-HK-HK" || v.name.includes("Cantonese") || v.name.includes("香港"));
-  const zhVoice = hkVoice || voices.find((v) => v.lang.startsWith("zh"));
-  if (zhVoice) {
-    utterance.voice = zhVoice;
-  }
-
-  utterance.onstart = () => {
-    isSpeaking = true;
-    updateSpeakButton(true, false);
-  };
-
-  utterance.onend = () => {
-    isSpeaking = false;
-    updateSpeakButton(false, false);
-  };
-
-  utterance.onerror = () => {
-    isSpeaking = false;
-    updateSpeakButton(false, false);
-  };
-
-  window.speechSynthesis.speak(utterance);
-}
-
-function updateSpeakButton(speaking, translating) {
-  const btn = document.getElementById("speak-button");
-  if (!btn) return;
-
-  if (translating) {
-    btn.textContent = "🔄 翻译紧…";
-    btn.classList.remove("speaking");
-    return;
-  }
-
-  btn.textContent = speaking ? "🔊 停止播报" : "🔊 语音播报";
-  btn.classList.toggle("speaking", speaking);
 }
 
 function escapeHtml(value) {
