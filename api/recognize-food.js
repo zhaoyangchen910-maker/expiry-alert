@@ -1,18 +1,25 @@
 // Vercel Serverless Function
 // 调用多模态 AI API 识别图片中的食物和保质期信息
-// 支持 SiliconFlow(Qwen-VL)、OpenAI(GPT-4o)、DeepSeek 三种 provider
+// 支持 Agnes-AI、SiliconFlow(Qwen-VL)、OpenAI(GPT-4o)、DeepSeek 四种 provider
 // 通过 VISION_API_PROVIDER 环境变量切换
 
 const VALID_CATEGORIES = ["乳制品", "蔬菜", "水果", "蛋类", "主食", "肉类", "其他"];
 
 // provider 配置
 const PROVIDER_CONFIG = {
+  agnes: {
+    name: "Agnes-AI",
+    baseUrl: "https://api-hub.agnes-ai.com/v1/chat/completions",
+    model: "agnes-2.0-flash",
+    envKey: "AGNES_API_KEY",
+    detail: undefined
+  },
   siliconflow: {
     name: "SiliconFlow",
     baseUrl: "https://api.siliconflow.cn/v1/chat/completions",
     model: "Qwen/Qwen2.5-VL-72B-Instruct",
     envKey: "SILICONFLOW_API_KEY",
-    detail: undefined // Qwen-VL 不支持 detail 参数
+    detail: undefined
   },
   openai: {
     name: "OpenAI",
@@ -50,9 +57,9 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "图片数据无效" });
   }
 
-  // 选择 AI 提供商（默认 siliconflow，因为 DeepSeek 目前不支持图片）
-  const providerKey = (process.env.VISION_API_PROVIDER || "siliconflow").toLowerCase();
-  const config = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.siliconflow;
+  // 选择 AI 提供商（默认 agnes，免费全模态）
+  const providerKey = (process.env.VISION_API_PROVIDER || "agnes").toLowerCase();
+  const config = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.agnes;
   const apiKey = process.env[config.envKey];
 
   if (!apiKey) {
@@ -151,7 +158,7 @@ async function callVisionApi(config, apiKey, base64Image, prompt) {
     )) {
       return {
         error: "deepseek_no_vision",
-        message: "当前 DeepSeek 模型不支持图片识别。推荐方案：\n1. 注册 SiliconFlow（硅基流动），获取 API Key，设置 SILICONFLOW_API_KEY 和 VISION_API_PROVIDER=siliconflow\n2. 或使用 OpenAI，设置 OPENAI_API_KEY 和 VISION_API_PROVIDER=openai",
+        message: "当前 DeepSeek 模型不支持图片识别。推荐方案：\n1. 注册 Agnes-AI，获取免费 API Key，设置 AGNES_API_KEY 和 VISION_API_PROVIDER=agnes\n2. 或使用 SiliconFlow，设置 SILICONFLOW_API_KEY 和 VISION_API_PROVIDER=siliconflow\n3. 或使用 OpenAI，设置 OPENAI_API_KEY 和 VISION_API_PROVIDER=openai",
         fallback: true
       };
     }
