@@ -1,9 +1,34 @@
 // Vercel Serverless Function
 // 调用多模态 AI API 识别图片中的食物和保质期信息
-// 支持 DeepSeek 和 OpenAI 两种 provider，通过 VISION_API_PROVIDER 环境变量切换
-// 需要在 Vercel 环境变量中设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY
+// 支持 SiliconFlow(Qwen-VL)、OpenAI(GPT-4o)、DeepSeek 三种 provider
+// 通过 VISION_API_PROVIDER 环境变量切换
 
 const VALID_CATEGORIES = ["乳制品", "蔬菜", "水果", "蛋类", "主食", "肉类", "其他"];
+
+// provider 配置
+const PROVIDER_CONFIG = {
+  siliconflow: {
+    name: "SiliconFlow",
+    baseUrl: "https://api.siliconflow.cn/v1/chat/completions",
+    model: "Qwen/Qwen2.5-VL-72B-Instruct",
+    envKey: "SILICONFLOW_API_KEY",
+    detail: undefined // Qwen-VL 不支持 detail 参数
+  },
+  openai: {
+    name: "OpenAI",
+    baseUrl: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-4o",
+    envKey: "OPENAI_API_KEY",
+    detail: "high"
+  },
+  deepseek: {
+    name: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/chat/completions",
+    model: "deepseek-v4-flash",
+    envKey: "DEEPSEEK_API_KEY",
+    detail: undefined
+  }
+};
 
 export default async function handler(request, response) {
   if (request.method !== "POST") {
@@ -25,16 +50,15 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "图片数据无效" });
   }
 
-  // 选择 AI 提供商
-  const provider = (process.env.VISION_API_PROVIDER || "deepseek").toLowerCase();
-  const apiKey = provider === "openai"
-    ? process.env.OPENAI_API_KEY
-    : process.env.DEEPSEEK_API_KEY;
+  // 选择 AI 提供商（默认 siliconflow，因为 DeepSeek 目前不支持图片）
+  const providerKey = (process.env.VISION_API_PROVIDER || "siliconflow").toLowerCase();
+  const config = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.siliconflow;
+  const apiKey = process.env[config.envKey];
 
   if (!apiKey) {
     return response.status(200).json({
       error: "no_api_key",
-      message: `未配置 ${provider === "openai" ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY"} 环境变量。请在 Vercel 项目设置中添加对应的 API Key。`
+      message: `未配置 ${config.envKey} 环境变量。请在 Vercel 项目设置中添加对应的 API Key。`
     });
   }
 
@@ -63,12 +87,7 @@ export default async function handler(request, response) {
 }`;
 
   try {
-    let result;
-    if (provider === "openai") {
-      result = await callOpenAI(apiKey, base64Image, prompt);
-    } else {
-      result = await callDeepSeek(apiKey, base64Image, prompt);
-    }
+    const result = await callVisionApi(config, apiKey, base64Image, prompt);
 
     if (result.error) {
       return response.status(200).json(result);
@@ -84,27 +103,33 @@ export default async function handler(request, response) {
   }
 }
 
-async function callOpenAI(apiKey, base64Image, prompt) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+async function callVisionApi(config, apiKey, base64Image, prompt) {
+  const imageContent = {
+    type: "image_url",
+    image_url: {
+      url: `data:image/jpeg;base64,${base64Image}`
+    }
+  };
+
+  // OpenAI 支持 detail 参数，其他 provider 不支持
+  if (config.detail) {
+    imageContent.image_url.detail = config.detail;
+  }
+
+  const res = await fetch(config.baseUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: config.model,
       messages: [
         {
           role: "user",
           content: [
             { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
-                detail: "high"
-              }
-            }
+            imageContent
           ]
         }
       ],
@@ -115,67 +140,30 @@ async function callOpenAI(apiKey, base64Image, prompt) {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`OpenAI API 错误: ${res.status} ${errText}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("OpenAI 返回空内容");
-  }
-
-  return parseVisionResponse(content);
-}
-
-async function callDeepSeek(apiKey, base64Image, prompt) {
-  // DeepSeek API 是 OpenAI 兼容格式，尝试使用相同的多模态消息格式
-  const res = await fetch("https://api.deepseek.com/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: "deepseek-v4-flash",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 1024,
-      temperature: 0.2
-    })
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    // 如果 DeepSeek 返回与图片相关的错误，提示用户切换到 OpenAI
     const lowerErr = errText.toLowerCase();
-    if (lowerErr.includes("image") || lowerErr.includes("multimodal") || lowerErr.includes("vision") || lowerErr.includes("unsupported")) {
+
+    // DeepSeek 返回图片相关错误时的特殊处理
+    if (config.name === "DeepSeek" && (
+      lowerErr.includes("image") ||
+      lowerErr.includes("multimodal") ||
+      lowerErr.includes("vision") ||
+      lowerErr.includes("unsupported")
+    )) {
       return {
         error: "deepseek_no_vision",
-        message: "当前 DeepSeek 模型不支持图片识别。请在 Vercel 环境变量中设置 OPENAI_API_KEY 和 VISION_API_PROVIDER=openai 来使用 GPT-4o 进行图片识别。",
+        message: "当前 DeepSeek 模型不支持图片识别。推荐方案：\n1. 注册 SiliconFlow（硅基流动），获取 API Key，设置 SILICONFLOW_API_KEY 和 VISION_API_PROVIDER=siliconflow\n2. 或使用 OpenAI，设置 OPENAI_API_KEY 和 VISION_API_PROVIDER=openai",
         fallback: true
       };
     }
-    throw new Error(`DeepSeek API 错误: ${res.status} ${errText}`);
+
+    throw new Error(`${config.name} API 错误: ${res.status} ${errText}`);
   }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new Error("DeepSeek 返回空内容");
+    throw new Error(`${config.name} 返回空内容`);
   }
 
   return parseVisionResponse(content);
