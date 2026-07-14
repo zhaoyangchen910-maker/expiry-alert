@@ -4,7 +4,8 @@
 
 ## 已完成功能
 
-- 手动录入食材名称、分类、购买日期、保质期天数和备注
+- **手动录入**食材名称、分类、购买日期、保质期天数和备注
+- **拍照识别**：上传食品包装图片，AI 自动识别食物名称、分类、生产日期和保质期
 - 使用浏览器本地存储（未登录）或 Supabase 云端数据库（已登录）保存食材数据
 - 自动计算到期日、剩余天数和临期状态
 - 按保质期紧急程度排序食材
@@ -37,7 +38,8 @@
 │   ├── _supabase.js        # 后端共享 Supabase 客户端
 │   ├── auth.js             # 认证 API（注册/登录/游客/验证）
 │   ├── foods.js            # 食材 CRUD API
-│   └── generate-recipe.js  # 菜谱生成 API（DeepSeek）
+│   ├── generate-recipe.js  # 菜谱生成 API（DeepSeek）
+│   └── recognize-food.js   # 图片识别 API（DeepSeek / OpenAI 视觉模型）
 ├── vercel.json             # Vercel 部署配置
 ├── package.json            # 项目信息和本地预览命令
 └── README.md
@@ -61,7 +63,9 @@
 |---|---|---|
 | `SUPABASE_URL` | `https://xxx.supabase.co` | Supabase 项目地址 |
 | `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Supabase service_role key（具有管理员权限，不要泄露） |
-| `DEEPSEEK_API_KEY` | `sk-...` | DeepSeek API Key（可选，不配置则使用本地兜底菜谱） |
+| `DEEPSEEK_API_KEY` | `sk-...` | DeepSeek API Key（用于菜谱生成；如 DeepSeek 支持图片识别，也可用于拍照识别） |
+| `OPENAI_API_KEY` | `sk-...` | OpenAI API Key（可选，用于图片识别。如果 DeepSeek 不支持图片，设置此变量并配置 VISION_API_PROVIDER=openai） |
+| `VISION_API_PROVIDER` | `deepseek` 或 `openai` | 图片识别使用的 AI 提供商，默认 deepseek |
 
 ### 3. 部署
 

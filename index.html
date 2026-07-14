@@ -71,6 +71,23 @@
                 <p>登录后可同步到云端，未登录时保存在本地。</p>
               </div>
 
+              <div class="image-upload-section">
+                <input type="file" id="food-image" accept="image/*" capture="environment" hidden />
+                <div class="image-upload-area" id="image-upload-area">
+                  <div class="upload-placeholder" id="upload-placeholder">
+                    <span class="upload-icon">📷</span>
+                    <p>点击拍照或选择图片</p>
+                    <small>AI 自动识别食物名称和保质期</small>
+                  </div>
+                  <img id="image-preview" hidden />
+                  <button type="button" class="remove-image-btn" id="remove-image-btn" hidden aria-label="移除图片">✕</button>
+                </div>
+                <button type="button" class="secondary-button recognize-btn" id="recognize-btn" hidden>
+                  <span class="btn-icon">🔍</span> 识别图片
+                </button>
+                <div class="recognize-status" id="recognize-status"></div>
+              </div>
+
               <div class="form-grid">
                 <label>
                   食材名称
@@ -173,7 +190,7 @@
             <article class="feature-card">
               <span>01</span>
               <h3>食材录入</h3>
-              <p>先支持手动输入，后续可以扩展拍照识别和扫码录入。</p>
+              <p>支持手动输入，也支持拍照识别食品包装，AI 自动提取名称、保质期等信息。</p>
             </article>
             <article class="feature-card">
               <span>02</span>

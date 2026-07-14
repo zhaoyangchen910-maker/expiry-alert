@@ -19,7 +19,15 @@ const elements = {
   heroTotal: document.querySelector("#hero-total"),
   heroAlertTitle: document.querySelector("#hero-alert-title"),
   heroAlertText: document.querySelector("#hero-alert-text"),
-  heroMiniList: document.querySelector("#hero-mini-list")
+  heroMiniList: document.querySelector("#hero-mini-list"),
+  // 图片识别相关元素
+  imageUploadArea: document.querySelector("#image-upload-area"),
+  foodImageInput: document.querySelector("#food-image"),
+  imagePreview: document.querySelector("#image-preview"),
+  uploadPlaceholder: document.querySelector("#upload-placeholder"),
+  removeImageBtn: document.querySelector("#remove-image-btn"),
+  recognizeBtn: document.querySelector("#recognize-btn"),
+  recognizeStatus: document.querySelector("#recognize-status")
 };
 
 const categoryIcons = {
@@ -131,6 +139,19 @@ elements.foodList.addEventListener("click", async (event) => {
 elements.generateRecipeBtn.addEventListener("click", () => {
   generateRecipe();
 });
+
+// ── 图片识别事件 ──
+elements.imageUploadArea.addEventListener("click", (e) => {
+  if (e.target.closest("#remove-image-btn")) return;
+  elements.foodImageInput.click();
+});
+
+elements.foodImageInput.addEventListener("change", handleImageSelect);
+elements.removeImageBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  clearImage();
+});
+elements.recognizeBtn.addEventListener("click", recognizeImage);
 
 // ── 异步菜谱生成（DeepSeek API → 本地兜底） ──
 
@@ -539,6 +560,83 @@ function hashCode(text) {
     hash |= 0;
   }
   return hash;
+}
+
+// ── 图片识别功能 ──
+
+function handleImageSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    elements.imagePreview.src = e.target.result;
+    elements.imagePreview.hidden = false;
+    elements.uploadPlaceholder.hidden = true;
+    elements.removeImageBtn.hidden = false;
+    elements.recognizeBtn.hidden = false;
+    elements.recognizeStatus.innerHTML = "";
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearImage() {
+  elements.foodImageInput.value = "";
+  elements.imagePreview.hidden = true;
+  elements.imagePreview.src = "";
+  elements.uploadPlaceholder.hidden = false;
+  elements.removeImageBtn.hidden = true;
+  elements.recognizeBtn.hidden = true;
+  elements.recognizeStatus.innerHTML = "";
+}
+
+async function recognizeImage() {
+  const file = elements.foodImageInput.files[0];
+  if (!file) return;
+
+  const validCategories = ["乳制品", "蔬菜", "水果", "蛋类", "主食", "肉类", "其他"];
+
+  elements.recognizeBtn.disabled = true;
+  elements.recognizeBtn.innerHTML = `<span class="loading-spinner"></span> 识别中...`;
+  elements.recognizeStatus.innerHTML = "";
+
+  try {
+    const reader = new FileReader();
+    const base64 = await new Promise((resolve, reject) => {
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const response = await fetch("/api/recognize-food", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64 })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      elements.recognizeStatus.innerHTML = `<span class="status-error">⚠️ ${escapeHtml(data.message || "识别失败")}</span>`;
+      return;
+    }
+
+    // 自动填充表单
+    elements.name.value = data.name || "";
+    elements.category.value = validCategories.includes(data.category) ? data.category : "其他";
+    elements.buyDate.value = data.buyDate || formatDate(today);
+    elements.shelfLife.value = String(data.shelfLife || 7);
+    elements.note.value = data.note || "";
+
+    elements.recognizeStatus.innerHTML = `<span class="status-success">✅ 已识别：${escapeHtml(data.name)}（置信度 ${Math.round((data.confidence || 0) * 100)}%）</span>`;
+
+  } catch (error) {
+    console.error("识别错误:", error);
+    elements.recognizeStatus.innerHTML = `<span class="status-error">⚠️ 识别出错，请手动输入</span>`;
+  } finally {
+    elements.recognizeBtn.disabled = false;
+    elements.recognizeBtn.innerHTML = `<span class="btn-icon">🔍</span> 识别图片`;
+  }
 }
 
 function escapeHtml(value) {
